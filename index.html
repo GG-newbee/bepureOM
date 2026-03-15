@@ -264,6 +264,48 @@
                 triggerSaveEffect();
             };
 
+            // ================= 导出与重置操作 =================
+            const convertToCSV = (headers, dataRows, filename) => {
+                const BOM = '\uFEFF';
+                let csvContent = headers.join(',') + '\n';
+                dataRows.forEach(row => {
+                    const cleanRow = row.map(field => `"${String(field !== null && field !== undefined ? field : '').replace(/"/g, '""')}"`);
+                    csvContent += cleanRow.join(',') + '\n';
+                });
+                
+                const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                link.click();
+            };
+
+            const exportOrders = () => {
+                const headers = ['订单单号', '创建日期', '商品名称', '成交单价', '数量', '订单总额', '预估毛利', '收件人姓名', '收件人电话', '收件地址', '订单状态', '物流单号'];
+                const data = orders.map(o => {
+                    const prod = getProduct(o.productId);
+                    const cust = getCustomer(o.customerId);
+                    const cost = o.cost || prod.cost || 0;
+                    return [
+                        o.id, o.date, prod.name || '已删除商品', o.price, o.quantity, o.price * o.quantity, (o.price - cost) * o.quantity, 
+                        cust.name || '已删除客户', cust.phone || '', cust.address || '', o.status, o.trackingNo || ''
+                    ];
+                });
+                convertToCSV(headers, data, `订单发货报表_${new Date().toISOString().split('T')[0]}.csv`);
+            };
+
+            const exportProducts = () => {
+                const headers = ['商品编号', '商品名称', '进货成本', '建议售价', '当前库存', '库存总成本'];
+                const data = products.map(p => [p.id, p.name, p.cost, p.price, p.stock, p.cost * p.stock]);
+                convertToCSV(headers, data, `商品与库存清单_${new Date().toISOString().split('T')[0]}.csv`);
+            };
+
+            const exportCustomers = () => {
+                const headers = ['客户编号', '姓名', '联系电话', '详细收件地址', '历史下单数'];
+                const data = customers.map(c => [c.id, c.name, c.phone, c.address, orders.filter(o => o.customerId === c.id).length]);
+                convertToCSV(headers, data, `收件人地址簿_${new Date().toISOString().split('T')[0]}.csv`);
+            };
+
             const executeClearAllData = async () => {
                 setProducts([]); setCustomers([]); setOrders([]);
                 await Promise.all([ supabaseDb.from('orders').delete().not('id', 'is', null), supabaseDb.from('products').delete().not('id', 'is', null), supabaseDb.from('customers').delete().not('id', 'is', null) ]);
@@ -314,6 +356,10 @@
                             <button onClick={() => handleTabChange('customers')} className={`w-full text-left px-4 py-3.5 rounded-xl flex items-center transition ${activeTab === 'customers' ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-gray-600 hover:bg-gray-50'}`}>
                                 <i className="fas fa-users w-6 text-center mr-2"></i> 客户管理
                             </button>
+                            {/* 新加回来的导出菜单 */}
+                            <button onClick={() => handleTabChange('export')} className={`w-full text-left px-4 py-3.5 rounded-xl flex items-center transition ${activeTab === 'export' ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-gray-600 hover:bg-gray-50'}`}>
+                                <i className="fas fa-file-export w-6 text-center mr-2"></i> 导出与设置
+                            </button>
                         </nav>
                         
                         {/* 移动端专属的退出抽屉区域遮罩 */}
@@ -336,6 +382,7 @@
                                 {activeTab === 'products' && '商品库存管理'}
                                 {activeTab === 'orders' && '订单物流管理'}
                                 {activeTab === 'customers' && '收件人地址簿'}
+                                {activeTab === 'export' && '数据导出与系统重置'}
                             </h2>
                             <div className="text-xs text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100 flex items-center">
                                 <span className="relative flex h-2 w-2 mr-2">
@@ -378,6 +425,72 @@
                                             <p className="text-xs sm:text-sm font-medium">库存预警</p>
                                         </div>
                                         <p className="text-lg sm:text-3xl font-bold text-red-500 tracking-tight">{lowStockCount}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Export / 数据导出与系统重置 */}
+                            {activeTab === 'export' && (
+                                <div className="space-y-4">
+                                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                                        <h3 className="text-lg font-bold text-gray-800 mb-1">导出为表格 (Excel/CSV)</h3>
+                                        <p className="text-sm text-gray-500 mb-6">随时将云端的实时数据下载到本地电脑或手机中，方便财务对账或备份。</p>
+                                        
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                                            {/* 导出订单 */}
+                                            <div className="border border-indigo-100 bg-indigo-50/50 p-5 rounded-2xl flex items-center justify-between">
+                                                <div className="flex items-center">
+                                                    <div className="bg-indigo-100 text-indigo-600 w-12 h-12 rounded-full flex items-center justify-center text-xl mr-4"><i className="fas fa-file-invoice-dollar"></i></div>
+                                                    <div>
+                                                        <h4 className="font-bold text-gray-800 text-sm">订单与发货报表</h4>
+                                                        <p className="text-xs text-gray-500 mt-1">含明细、利润及单号</p>
+                                                    </div>
+                                                </div>
+                                                <button onClick={exportOrders} className="bg-indigo-600 hover:bg-indigo-700 text-white w-10 h-10 rounded-full flex items-center justify-center transition shadow-sm active:scale-95"><i className="fas fa-download"></i></button>
+                                            </div>
+
+                                            {/* 导出商品 */}
+                                            <div className="border border-green-100 bg-green-50/50 p-5 rounded-2xl flex items-center justify-between">
+                                                <div className="flex items-center">
+                                                    <div className="bg-green-100 text-green-600 w-12 h-12 rounded-full flex items-center justify-center text-xl mr-4"><i className="fas fa-boxes"></i></div>
+                                                    <div>
+                                                        <h4 className="font-bold text-gray-800 text-sm">商品与库存清单</h4>
+                                                        <p className="text-xs text-gray-500 mt-1">含进售价及库存量</p>
+                                                    </div>
+                                                </div>
+                                                <button onClick={exportProducts} className="bg-green-600 hover:bg-green-700 text-white w-10 h-10 rounded-full flex items-center justify-center transition shadow-sm active:scale-95"><i className="fas fa-download"></i></button>
+                                            </div>
+
+                                            {/* 导出客户 */}
+                                            <div className="border border-orange-100 bg-orange-50/50 p-5 rounded-2xl flex items-center justify-between">
+                                                <div className="flex items-center">
+                                                    <div className="bg-orange-100 text-orange-600 w-12 h-12 rounded-full flex items-center justify-center text-xl mr-4"><i className="fas fa-address-book"></i></div>
+                                                    <div>
+                                                        <h4 className="font-bold text-gray-800 text-sm">收件人地址簿</h4>
+                                                        <p className="text-xs text-gray-500 mt-1">含客户电话及地址</p>
+                                                    </div>
+                                                </div>
+                                                <button onClick={exportCustomers} className="bg-orange-500 hover:bg-orange-600 text-white w-10 h-10 rounded-full flex items-center justify-center transition shadow-sm active:scale-95"><i className="fas fa-download"></i></button>
+                                            </div>
+                                        </div>
+
+                                        {/* 危险操作区 */}
+                                        <div className="border-t border-gray-100 pt-6">
+                                            <h3 className="text-base font-bold text-red-600 mb-2"><i className="fas fa-exclamation-triangle mr-2"></i>危险操作区</h3>
+                                            <p className="text-sm text-gray-500 mb-4">这将会彻底清空云端数据库中所有人的数据，无法恢复。</p>
+                                            
+                                            {showClearConfirm ? (
+                                                <div className="bg-red-50 border border-red-100 p-4 rounded-xl">
+                                                    <p className="text-red-700 font-bold mb-3 text-sm"><i className="fas fa-exclamation-circle mr-2"></i>确定清空云端所有数据吗？此操作无法撤销！</p>
+                                                    <div className="flex space-x-3">
+                                                        <button onClick={executeClearAllData} className="flex-1 bg-red-600 text-white font-bold py-2.5 rounded-lg active:bg-red-700 shadow-sm">确认清空数据</button>
+                                                        <button onClick={() => setShowClearConfirm(false)} className="flex-1 bg-white border border-gray-200 text-gray-700 font-bold py-2.5 rounded-lg active:bg-gray-50">取消</button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <button onClick={() => setShowClearConfirm(true)} className="w-full sm:w-auto border-2 border-red-100 text-red-500 bg-transparent font-bold py-3 px-6 rounded-xl active:bg-red-50 transition"><i className="fas fa-trash-alt mr-2"></i>清空云端全部数据</button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             )}
