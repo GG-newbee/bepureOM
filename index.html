@@ -2,8 +2,8 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>订单与库存管理系统 - 云端协作版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>云端订单系统</title>
     <!-- React & Babel -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -15,11 +15,21 @@
     <!-- Supabase JS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        .modal { background-color: rgba(0,0,0,0.5); }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            -webkit-tap-highlight-color: transparent; /* 移除手机点击的高亮底色 */
+        }
+        .modal { background-color: rgba(0,0,0,0.6); backdrop-filter: blur(4px); }
+        
+        /* 隐藏滚动条但保留滚动功能 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* 手机端底部安全区适配 */
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800">
+<body class="bg-gray-50 text-gray-800">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -31,8 +41,10 @@
         const supabaseDb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         const App = () => {
-            const [activeTab, setActiveTab] = useState('orders');
+            // 默认展示 dashboard
+            const [activeTab, setActiveTab] = useState('dashboard');
             const [isLoading, setIsLoading] = useState(true);
+            const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
             
             // 状态管理：数据
             const [products, setProducts] = useState([]);
@@ -43,6 +55,13 @@
             const triggerSaveEffect = (msg = '云端数据已同步') => {
                 setSaveStatus(msg);
                 setTimeout(() => setSaveStatus(''), 2500);
+            };
+
+            // 切换 Tab 时自动收起手机菜单
+            const handleTabChange = (tab) => {
+                setActiveTab(tab);
+                setIsMobileMenuOpen(false);
+                window.scrollTo(0, 0);
             };
 
             // ================= 核心：从云端加载与实时监听 =================
@@ -65,17 +84,13 @@
 
             useEffect(() => {
                 fetchCloudData();
-
-                // 设置 Supabase 实时订阅，一旦数据库有任何变化，立刻拉取最新数据
                 const realtimeChannel = supabaseDb.channel('cloud-sync')
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchCloudData)
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, fetchCloudData)
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchCloudData)
                     .subscribe();
 
-                return () => {
-                    supabaseDb.removeChannel(realtimeChannel);
-                };
+                return () => supabaseDb.removeChannel(realtimeChannel);
             }, []);
 
             // UI 状态
@@ -104,19 +119,11 @@
 
             // ================= 商品操作 =================
             const openAddProductModal = () => {
-                setEditingProduct(null);
-                setConfirmDeleteProduct(false);
-                setProductForm({ name: '', cost: '', price: '', stock: '' });
-                setShowProductModal(true);
+                setEditingProduct(null); setConfirmDeleteProduct(false); setProductForm({ name: '', cost: '', price: '', stock: '' }); setShowProductModal(true);
             };
 
             const openEditProductModal = (product) => {
-                setEditingProduct(product);
-                setConfirmDeleteProduct(false);
-                setProductForm({ 
-                    name: product.name, cost: product.cost, price: product.price, stock: product.stock 
-                });
-                setShowProductModal(true);
+                setEditingProduct(product); setConfirmDeleteProduct(false); setProductForm({ name: product.name, cost: product.cost, price: product.price, stock: product.stock }); setShowProductModal(true);
             };
 
             const handleSaveProduct = async (e) => {
@@ -130,17 +137,14 @@
                     setProducts([...products, newProduct]);
                     await supabaseDb.from('products').insert([newProduct]);
                 }
-                setShowProductModal(false);
-                triggerSaveEffect();
+                setShowProductModal(false); triggerSaveEffect();
             };
 
             const executeDeleteProduct = async () => {
                 if (!editingProduct) return;
                 setProducts(products.filter(p => p.id !== editingProduct.id));
                 await supabaseDb.from('products').delete().eq('id', editingProduct.id);
-                setShowProductModal(false);
-                setConfirmDeleteProduct(false);
-                triggerSaveEffect('商品已删除');
+                setShowProductModal(false); setConfirmDeleteProduct(false); triggerSaveEffect('商品已删除');
             };
 
             const executeRestock = async (e) => {
@@ -152,23 +156,16 @@
                     await supabaseDb.from('products').update({ stock: newStock }).eq('id', restockingProduct.id);
                     triggerSaveEffect();
                 }
-                setRestockingProduct(null);
-                setRestockAmount('');
+                setRestockingProduct(null); setRestockAmount('');
             };
 
             // ================= 收件人操作 =================
             const openAddCustomerModal = () => {
-                setEditingCustomer(null);
-                setConfirmDeleteCustomer(false);
-                setCustomerForm({ name: '', phone: '', address: '' });
-                setShowCustomerModal(true);
+                setEditingCustomer(null); setConfirmDeleteCustomer(false); setCustomerForm({ name: '', phone: '', address: '' }); setShowCustomerModal(true);
             };
 
             const openEditCustomerModal = (customer) => {
-                setEditingCustomer(customer);
-                setConfirmDeleteCustomer(false);
-                setCustomerForm({ name: customer.name, phone: customer.phone, address: customer.address });
-                setShowCustomerModal(true);
+                setEditingCustomer(customer); setConfirmDeleteCustomer(false); setCustomerForm({ name: customer.name, phone: customer.phone, address: customer.address }); setShowCustomerModal(true);
             };
 
             const handleSaveCustomer = async (e) => {
@@ -182,135 +179,79 @@
                     setCustomers([newCustomer, ...customers]);
                     await supabaseDb.from('customers').insert([newCustomer]);
                 }
-                setShowCustomerModal(false);
-                triggerSaveEffect();
+                setShowCustomerModal(false); triggerSaveEffect();
             };
 
             const executeDeleteCustomer = async () => {
                 if (!editingCustomer) return;
                 setCustomers(customers.filter(c => c.id !== editingCustomer.id));
                 await supabaseDb.from('customers').delete().eq('id', editingCustomer.id);
-                setShowCustomerModal(false);
-                setConfirmDeleteCustomer(false);
-                triggerSaveEffect('收件人已删除');
+                setShowCustomerModal(false); setConfirmDeleteCustomer(false); triggerSaveEffect('收件人已删除');
             };
 
             // ================= 订单操作 =================
             const openAddOrderModal = () => {
-                setEditingOrder(null);
-                setConfirmDelete(false);
-                setOrderForm({ productId: '', price: '', quantity: 1, status: '待发货', customerId: '', trackingNo: '' });
-                setShowOrderModal(true);
+                setEditingOrder(null); setConfirmDelete(false); setOrderForm({ productId: '', price: '', quantity: 1, status: '待发货', customerId: '', trackingNo: '' }); setShowOrderModal(true);
             };
 
             const openEditOrderModal = (order) => {
-                setEditingOrder(order);
-                setConfirmDelete(false);
-                setOrderForm({ 
-                    productId: order.productId, price: order.price, quantity: order.quantity, 
-                    status: order.status, customerId: order.customerId, trackingNo: order.trackingNo || '' 
-                });
-                setShowOrderModal(true);
+                setEditingOrder(order); setConfirmDelete(false); setOrderForm({ productId: order.productId, price: order.price, quantity: order.quantity, status: order.status, customerId: order.customerId, trackingNo: order.trackingNo || '' }); setShowOrderModal(true);
             };
 
             const handleSaveOrder = async (e) => {
                 e.preventDefault();
-                const newProdId = orderForm.productId;
-                const newQty = Number(orderForm.quantity);
-                const newProd = products.find(p => p.id === newProdId);
-                
+                const newProdId = orderForm.productId; const newQty = Number(orderForm.quantity); const newProd = products.find(p => p.id === newProdId);
                 if (!newProd) { alert('请选择商品'); return; }
 
                 if (editingOrder) {
-                    const oldProdId = editingOrder.productId;
-                    const oldQty = Number(editingOrder.quantity);
-
+                    const oldProdId = editingOrder.productId; const oldQty = Number(editingOrder.quantity);
                     if (oldProdId === newProdId) {
                         const diff = newQty - oldQty;
                         if (newProd.stock < diff) { alert(`库存不足！【${newProd.name}】 当前仅剩 ${newProd.stock} 件。`); return; }
-                        
                         const newStock = newProd.stock - diff;
                         setProducts(products.map(p => p.id === newProdId ? { ...p, stock: newStock } : p));
                         await supabaseDb.from('products').update({ stock: newStock }).eq('id', newProdId);
                     } else {
                         if (newProd.stock < newQty) { alert(`库存不足！【${newProd.name}】 当前仅剩 ${newProd.stock} 件。`); return; }
-                        
                         const oldProd = products.find(p => p.id === oldProdId);
                         const restoredStock = (oldProd ? oldProd.stock : 0) + oldQty;
                         const deductedStock = newProd.stock - newQty;
-
-                        setProducts(products.map(p => {
-                            if (p.id === oldProdId) return { ...p, stock: restoredStock }; 
-                            if (p.id === newProdId) return { ...p, stock: deductedStock }; 
-                            return p;
-                        }));
-                        
+                        setProducts(products.map(p => { if (p.id === oldProdId) return { ...p, stock: restoredStock }; if (p.id === newProdId) return { ...p, stock: deductedStock }; return p; }));
                         await supabaseDb.from('products').update({ stock: restoredStock }).eq('id', oldProdId);
                         await supabaseDb.from('products').update({ stock: deductedStock }).eq('id', newProdId);
                     }
-
-                    const updatedOrder = {
-                        ...editingOrder,
-                        productId: newProdId,
-                        customerId: orderForm.customerId,
-                        price: Number(orderForm.price),
-                        cost: newProd.cost, 
-                        quantity: newQty,
-                        trackingNo: orderForm.trackingNo,
-                        status: (orderForm.trackingNo && orderForm.status === '待发货') ? '已发货' : orderForm.status
-                    };
+                    const updatedOrder = { ...editingOrder, productId: newProdId, customerId: orderForm.customerId, price: Number(orderForm.price), cost: newProd.cost, quantity: newQty, trackingNo: orderForm.trackingNo, status: (orderForm.trackingNo && orderForm.status === '待发货') ? '已发货' : orderForm.status };
                     setOrders(orders.map(o => o.id === editingOrder.id ? updatedOrder : o));
                     await supabaseDb.from('orders').upsert(updatedOrder);
-
                 } else {
                     if (newProd.stock < newQty) { alert(`库存不足！【${newProd.name}】 当前仅剩 ${newProd.stock} 件。`); return; }
-
                     const newStock = newProd.stock - newQty;
                     setProducts(products.map(p => p.id === newProd.id ? { ...p, stock: newStock } : p));
                     await supabaseDb.from('products').update({ stock: newStock }).eq('id', newProdId);
-
-                    const newOrder = {
-                        id: `ORD-${Date.now().toString().slice(-6)}`,
-                        productId: newProdId,
-                        customerId: orderForm.customerId,
-                        price: Number(orderForm.price),
-                        cost: newProd.cost, 
-                        quantity: newQty,
-                        status: orderForm.trackingNo ? '已发货' : '待发货',
-                        date: new Date().toISOString().split('T')[0],
-                        trackingNo: orderForm.trackingNo
-                    };
+                    const newOrder = { id: `ORD-${Date.now().toString().slice(-6)}`, productId: newProdId, customerId: orderForm.customerId, price: Number(orderForm.price), cost: newProd.cost, quantity: newQty, status: orderForm.trackingNo ? '已发货' : '待发货', date: new Date().toISOString().split('T')[0], trackingNo: orderForm.trackingNo };
                     setOrders([newOrder, ...orders]);
                     await supabaseDb.from('orders').insert([newOrder]);
                 }
-
-                setShowOrderModal(false);
-                triggerSaveEffect();
+                setShowOrderModal(false); triggerSaveEffect();
             };
 
             const executeDeleteOrder = async () => {
                 if (!editingOrder) return;
-                
                 const prod = products.find(p => p.id === editingOrder.productId);
                 if (prod) {
                     const restoredStock = prod.stock + Number(editingOrder.quantity);
                     setProducts(products.map(p => p.id === prod.id ? { ...p, stock: restoredStock } : p));
                     await supabaseDb.from('products').update({ stock: restoredStock }).eq('id', prod.id);
                 }
-
                 setOrders(orders.filter(o => o.id !== editingOrder.id));
                 await supabaseDb.from('orders').delete().eq('id', editingOrder.id);
-                
-                setShowOrderModal(false);
-                setConfirmDelete(false);
-                triggerSaveEffect('订单已删除');
+                setShowOrderModal(false); setConfirmDelete(false); triggerSaveEffect('订单已删除');
             };
 
             const saveTrackingNo = async (id) => {
                 setOrders(orders.map(o => o.id === id ? { ...o, trackingNo: editingTrackingNo.value } : o));
                 await supabaseDb.from('orders').update({ trackingNo: editingTrackingNo.value }).eq('id', id);
-                setEditingTrackingNo({ id: null, value: '' });
-                triggerSaveEffect();
+                setEditingTrackingNo({ id: null, value: '' }); triggerSaveEffect();
             };
 
             const updateOrderStatus = async (id, newStatus) => {
@@ -323,60 +264,10 @@
                 triggerSaveEffect();
             };
 
-            // ================= CSV 导出与系统重置 =================
-            const convertToCSV = (headers, dataRows, filename) => {
-                const BOM = '\uFEFF';
-                let csvContent = headers.join(',') + '\n';
-                dataRows.forEach(row => {
-                    const cleanRow = row.map(field => `"${String(field !== null && field !== undefined ? field : '').replace(/"/g, '""')}"`);
-                    csvContent += cleanRow.join(',') + '\n';
-                });
-                
-                const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement("a");
-                link.href = URL.createObjectURL(blob);
-                link.download = filename;
-                link.click();
-            };
-
-            const exportOrders = () => {
-                const headers = ['订单单号', '创建日期', '商品名称', '成交单价', '数量', '订单总额', '预估毛利', '收件人姓名', '收件人电话', '收件地址', '订单状态', '物流单号'];
-                const data = orders.map(o => {
-                    const prod = getProduct(o.productId);
-                    const cust = getCustomer(o.customerId);
-                    const cost = o.cost || prod.cost || 0;
-                    return [
-                        o.id, o.date, prod.name || '已删除商品', o.price, o.quantity, o.price * o.quantity, (o.price - cost) * o.quantity, 
-                        cust.name || '已删除客户', cust.phone || '', cust.address || '', o.status, o.trackingNo || ''
-                    ];
-                });
-                convertToCSV(headers, data, `订单发货报表_${new Date().toISOString().split('T')[0]}.csv`);
-            };
-
-            const exportProducts = () => {
-                const headers = ['商品编号', '商品名称', '进货成本', '建议售价', '当前库存', '库存总成本'];
-                const data = products.map(p => [p.id, p.name, p.cost, p.price, p.stock, p.cost * p.stock]);
-                convertToCSV(headers, data, `商品与库存清单_${new Date().toISOString().split('T')[0]}.csv`);
-            };
-
-            const exportCustomers = () => {
-                const headers = ['客户编号', '姓名', '联系电话', '详细收件地址', '历史下单数'];
-                const data = customers.map(c => [c.id, c.name, c.phone, c.address, orders.filter(o => o.customerId === c.id).length]);
-                convertToCSV(headers, data, `收件人地址簿_${new Date().toISOString().split('T')[0]}.csv`);
-            };
-
             const executeClearAllData = async () => {
                 setProducts([]); setCustomers([]); setOrders([]);
-                
-                // 从云端彻底删除所有数据
-                await Promise.all([
-                    supabaseDb.from('orders').delete().not('id', 'is', null),
-                    supabaseDb.from('products').delete().not('id', 'is', null),
-                    supabaseDb.from('customers').delete().not('id', 'is', null)
-                ]);
-
-                setShowClearConfirm(false);
-                triggerSaveEffect('云端数据已全部清空！');
+                await Promise.all([ supabaseDb.from('orders').delete().not('id', 'is', null), supabaseDb.from('products').delete().not('id', 'is', null), supabaseDb.from('customers').delete().not('id', 'is', null) ]);
+                setShowClearConfirm(false); triggerSaveEffect('云端数据已全部清空！');
             };
 
             // 数据统计
@@ -384,197 +275,254 @@
             const totalProfit = orders.reduce((sum, o) => sum + ((o.price - (o.cost || getProduct(o.productId).cost || 0)) * o.quantity), 0);
             const pendingShipments = orders.filter(o => o.status === '待发货').length;
             const lowStockCount = products.filter(p => p.stock < 10).length;
-            const totalInventoryValue = products.reduce((sum, p) => sum + (p.cost * p.stock), 0);
 
-            // 如果正在从云端加载初始数据
             if (isLoading) {
                 return (
-                    <div className="flex h-screen w-screen items-center justify-center bg-gray-100 flex-col">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
-                        <h2 className="text-gray-600 font-medium">正在连接云端数据库...</h2>
-                        <p className="text-sm text-gray-400 mt-2">请确保您已在 Supabase 运行了建表 SQL</p>
+                    <div className="flex h-screen w-screen items-center justify-center bg-gray-50 flex-col">
+                        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mb-4"></div>
+                        <h2 className="text-gray-600 font-medium">正在连接云端...</h2>
                     </div>
                 );
             }
 
             return (
-                <div className="flex h-screen bg-gray-100">
-                    <div className="w-64 bg-white shadow-lg flex flex-col relative z-20">
-                        <div className="p-6 border-b">
-                            <h1 className="text-xl font-bold text-indigo-600"><i className="fas fa-cloud mr-2"></i>云端订单系统</h1>
-                        </div>
-                        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-                            <button onClick={() => setActiveTab('dashboard')} className={`w-full text-left px-4 py-3 rounded-lg flex items-center transition ${activeTab === 'dashboard' ? 'bg-indigo-50 text-indigo-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>
-                                <i className="fas fa-chart-pie w-6"></i> 财务与概览
-                            </button>
-                            <button onClick={() => setActiveTab('products')} className={`w-full text-left px-4 py-3 rounded-lg flex items-center transition ${activeTab === 'products' ? 'bg-indigo-50 text-indigo-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>
-                                <i className="fas fa-boxes w-6"></i> 商品与库存
-                            </button>
-                            <button onClick={() => setActiveTab('orders')} className={`w-full text-left px-4 py-3 rounded-lg flex items-center transition ${activeTab === 'orders' ? 'bg-indigo-50 text-indigo-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>
-                                <i className="fas fa-shopping-cart w-6"></i> 订单与发货
-                            </button>
-                            <button onClick={() => setActiveTab('customers')} className={`w-full text-left px-4 py-3 rounded-lg flex items-center transition ${activeTab === 'customers' ? 'bg-indigo-50 text-indigo-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>
-                                <i className="fas fa-users w-6"></i> 收件人地址
-                            </button>
-                            <div className="pt-4 mt-2 border-t border-gray-100">
-                                <button onClick={() => setActiveTab('export')} className={`w-full text-left px-4 py-3 rounded-lg flex items-center transition ${activeTab === 'export' ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>
-                                    <i className="fas fa-database w-6"></i> 数据导出与重置
-                                </button>
-                            </div>
-                        </nav>
+                <div className="flex flex-col md:flex-row h-screen bg-gray-50">
+                    
+                    {/* 移动端顶部导航栏 */}
+                    <div className="md:hidden bg-white shadow-sm flex justify-between items-center p-4 z-30 relative">
+                        <h1 className="text-lg font-bold text-indigo-600 truncate"><i className="fas fa-cloud mr-2"></i>云端订单</h1>
+                        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-gray-600 text-2xl focus:outline-none p-1">
+                            <i className={`fas ${isMobileMenuOpen ? 'fa-times' : 'fa-bars'}`}></i>
+                        </button>
                     </div>
 
-                    <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
-                        <div className={`absolute top-4 right-1/2 translate-x-1/2 bg-green-100 text-green-700 px-4 py-2 rounded-full text-sm font-medium shadow-sm transition-all duration-500 z-50 flex items-center ${saveStatus ? 'opacity-100 transform translate-y-0' : 'opacity-0 transform -translate-y-4 pointer-events-none'}`}>
-                            <i className="fas fa-cloud-upload-alt mr-2"></i> {saveStatus}
+                    {/* 左侧侧边栏 (PC端固定，移动端抽屉) */}
+                    <div className={`${isMobileMenuOpen ? 'block' : 'hidden'} md:flex flex-col w-full md:w-64 bg-white shadow-lg z-20 absolute md:relative inset-0 md:inset-auto h-full pt-[60px] md:pt-0`}>
+                        <div className="hidden md:block p-6 border-b border-gray-100">
+                            <h1 className="text-xl font-bold text-indigo-600"><i className="fas fa-cloud mr-2"></i>云端订单</h1>
+                        </div>
+                        <nav className="flex-1 p-4 space-y-2 overflow-y-auto no-scrollbar">
+                            <button onClick={() => handleTabChange('dashboard')} className={`w-full text-left px-4 py-3.5 rounded-xl flex items-center transition ${activeTab === 'dashboard' ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-gray-600 hover:bg-gray-50'}`}>
+                                <i className="fas fa-chart-pie w-6 text-center mr-2"></i> 财务概览
+                            </button>
+                            <button onClick={() => handleTabChange('products')} className={`w-full text-left px-4 py-3.5 rounded-xl flex items-center transition ${activeTab === 'products' ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-gray-600 hover:bg-gray-50'}`}>
+                                <i className="fas fa-boxes w-6 text-center mr-2"></i> 商品与库存
+                            </button>
+                            <button onClick={() => handleTabChange('orders')} className={`w-full text-left px-4 py-3.5 rounded-xl flex items-center transition ${activeTab === 'orders' ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-gray-600 hover:bg-gray-50'}`}>
+                                <i className="fas fa-shopping-cart w-6 text-center mr-2"></i> 订单与发货
+                            </button>
+                            <button onClick={() => handleTabChange('customers')} className={`w-full text-left px-4 py-3.5 rounded-xl flex items-center transition ${activeTab === 'customers' ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-gray-600 hover:bg-gray-50'}`}>
+                                <i className="fas fa-users w-6 text-center mr-2"></i> 客户管理
+                            </button>
+                        </nav>
+                        
+                        {/* 移动端专属的退出抽屉区域遮罩 */}
+                        {isMobileMenuOpen && (
+                            <div className="absolute inset-x-0 bottom-0 top-[350px] bg-black/20" onClick={() => setIsMobileMenuOpen(false)}></div>
+                        )}
+                    </div>
+
+                    {/* 主内容区 */}
+                    <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+                        {/* 顶部保存提示 */}
+                        <div className={`absolute top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-full text-xs sm:text-sm shadow-xl transition-all duration-300 z-50 flex items-center whitespace-nowrap ${saveStatus ? 'opacity-100 transform translate-y-0 scale-100' : 'opacity-0 transform -translate-y-4 scale-95 pointer-events-none'}`}>
+                            <i className="fas fa-check-circle text-green-400 mr-2"></i> {saveStatus}
                         </div>
 
-                        <header className="bg-white shadow-sm p-4 flex justify-between items-center z-10 shrink-0">
-                            <h2 className="text-xl font-semibold text-gray-800">
+                        {/* PC端顶部面包屑 */}
+                        <header className="hidden md:flex bg-white shadow-sm p-4 justify-between items-center z-10 shrink-0">
+                            <h2 className="text-lg font-semibold text-gray-800">
                                 {activeTab === 'dashboard' && '财务与经营概览'}
-                                {activeTab === 'products' && '商品管理'}
-                                {activeTab === 'orders' && '订单发货与物流管理'}
+                                {activeTab === 'products' && '商品库存管理'}
+                                {activeTab === 'orders' && '订单物流管理'}
                                 {activeTab === 'customers' && '收件人地址簿'}
-                                {activeTab === 'export' && '云端数据导出与管理'}
                             </h2>
-                            <div className="text-xs text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-200 flex items-center">
+                            <div className="text-xs text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100 flex items-center">
                                 <span className="relative flex h-2 w-2 mr-2">
                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
                                   <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
                                 </span>
-                                Supabase 实时协作已连接
+                                云端已连接
                             </div>
                         </header>
 
-                        <main className="p-6 flex-1 overflow-auto">
+                        <main className="flex-1 overflow-auto p-3 sm:p-6 pb-safe no-scrollbar">
+                            
                             {/* Dashboard */}
                             {activeTab === 'dashboard' && (
-                                <div className="space-y-6">
-                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
-                                            <div className="rounded-full bg-blue-100 p-4 mr-4"><i className="fas fa-wallet text-blue-600 text-xl"></i></div>
-                                            <div><p className="text-sm text-gray-500 mb-1">总销售额</p><p className="text-2xl font-bold text-gray-800">¥{totalRevenue.toLocaleString()}</p></div>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
+                                    <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+                                        <div className="flex items-center text-gray-500 mb-2 sm:mb-3">
+                                            <div className="rounded-full bg-blue-50 p-2 sm:p-3 mr-2 sm:mr-3"><i className="fas fa-wallet text-blue-500 text-sm sm:text-lg"></i></div>
+                                            <p className="text-xs sm:text-sm font-medium">总销售额</p>
                                         </div>
-                                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
-                                            <div className="rounded-full bg-green-100 p-4 mr-4"><i className="fas fa-chart-line text-green-600 text-xl"></i></div>
-                                            <div><p className="text-sm text-gray-500 mb-1">预估毛利</p><p className="text-2xl font-bold text-green-600">¥{totalProfit.toLocaleString()}</p></div>
-                                        </div>
-                                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
-                                            <div className="rounded-full bg-orange-100 p-4 mr-4"><i className="fas fa-shipping-fast text-orange-600 text-xl"></i></div>
-                                            <div><p className="text-sm text-gray-500 mb-1">待发货订单</p><p className="text-2xl font-bold text-gray-800">{pendingShipments} 单</p></div>
-                                        </div>
-                                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
-                                            <div className="rounded-full bg-red-100 p-4 mr-4"><i className="fas fa-exclamation-triangle text-red-600 text-xl"></i></div>
-                                            <div><p className="text-sm text-gray-500 mb-1">库存预警</p><p className="text-2xl font-bold text-red-600">{lowStockCount} 款</p></div>
-                                        </div>
+                                        <p className="text-lg sm:text-3xl font-bold text-gray-800 tracking-tight">¥{totalRevenue.toLocaleString()}</p>
                                     </div>
-                                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                        <h3 className="text-lg font-medium text-gray-800 mb-4">库存资产状态</h3>
-                                        <div className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
-                                            <div><p className="text-sm text-gray-500">当前库存总成本占用</p><p className="text-xl font-bold text-gray-800 mt-1">¥{totalInventoryValue.toLocaleString()}</p></div>
-                                            <button onClick={() => setActiveTab('products')} className="text-indigo-600 hover:text-indigo-800 text-sm font-medium">查看库存详情 <i className="fas fa-arrow-right ml-1"></i></button>
+                                    <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+                                        <div className="flex items-center text-gray-500 mb-2 sm:mb-3">
+                                            <div className="rounded-full bg-green-50 p-2 sm:p-3 mr-2 sm:mr-3"><i className="fas fa-chart-line text-green-500 text-sm sm:text-lg"></i></div>
+                                            <p className="text-xs sm:text-sm font-medium">预估毛利</p>
                                         </div>
+                                        <p className="text-lg sm:text-3xl font-bold text-green-600 tracking-tight">¥{totalProfit.toLocaleString()}</p>
                                     </div>
-                                </div>
-                            )}
-
-                            {/* Export */}
-                            {activeTab === 'export' && (
-                                <div className="space-y-6">
-                                    <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
-                                        <h3 className="text-lg font-bold text-gray-800 mb-2">导出为 Excel / CSV 表格</h3>
-                                        <p className="text-sm text-gray-500 mb-8">您可以将云端的所有数据分类导出到本地电脑。</p>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                                            <div className="border border-indigo-100 bg-indigo-50/50 p-6 rounded-xl flex flex-col items-center text-center">
-                                                <div className="bg-indigo-100 text-indigo-600 w-16 h-16 rounded-full flex items-center justify-center text-2xl mb-4"><i className="fas fa-file-invoice-dollar"></i></div>
-                                                <h4 className="font-bold text-gray-800 mb-2">订单与发货报表</h4>
-                                                <button onClick={exportOrders} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 mt-4 rounded-lg transition shadow-sm"><i className="fas fa-download mr-2"></i>导出订单</button>
-                                            </div>
-                                            <div className="border border-green-100 bg-green-50/50 p-6 rounded-xl flex flex-col items-center text-center">
-                                                <div className="bg-green-100 text-green-600 w-16 h-16 rounded-full flex items-center justify-center text-2xl mb-4"><i className="fas fa-boxes"></i></div>
-                                                <h4 className="font-bold text-gray-800 mb-2">商品与库存清单</h4>
-                                                <button onClick={exportProducts} className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 mt-4 rounded-lg transition shadow-sm"><i className="fas fa-download mr-2"></i>导出商品</button>
-                                            </div>
-                                            <div className="border border-orange-100 bg-orange-50/50 p-6 rounded-xl flex flex-col items-center text-center">
-                                                <div className="bg-orange-100 text-orange-600 w-16 h-16 rounded-full flex items-center justify-center text-2xl mb-4"><i className="fas fa-address-book"></i></div>
-                                                <h4 className="font-bold text-gray-800 mb-2">收件人地址簿</h4>
-                                                <button onClick={exportCustomers} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 mt-4 rounded-lg transition shadow-sm"><i className="fas fa-download mr-2"></i>导出客户</button>
-                                            </div>
+                                    <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+                                        <div className="flex items-center text-gray-500 mb-2 sm:mb-3">
+                                            <div className="rounded-full bg-orange-50 p-2 sm:p-3 mr-2 sm:mr-3"><i className="fas fa-shipping-fast text-orange-500 text-sm sm:text-lg"></i></div>
+                                            <p className="text-xs sm:text-sm font-medium">待发货单</p>
                                         </div>
-                                        <div className="border-t border-gray-100 pt-8 mt-4">
-                                            <h3 className="text-lg font-bold text-red-600 mb-2"><i className="fas fa-exclamation-triangle mr-2"></i>危险操作区</h3>
-                                            <p className="text-sm text-gray-500 mb-4">这将会彻底清空云端数据库中所有人的数据。</p>
-                                            {showClearConfirm ? (
-                                                <div className="bg-red-50 border border-red-200 p-4 rounded-lg inline-block">
-                                                    <p className="text-red-700 font-bold mb-3"><i className="fas fa-exclamation-circle mr-2"></i>确定清空云端所有数据吗？此操作无法撤销！</p>
-                                                    <div className="flex space-x-3">
-                                                        <button onClick={executeClearAllData} className="bg-red-600 hover:bg-red-700 text-white font-medium py-1.5 px-4 rounded transition shadow-sm">确定清空云端数据</button>
-                                                        <button onClick={() => setShowClearConfirm(false)} className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium py-1.5 px-4 rounded transition">取消</button>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <button onClick={() => setShowClearConfirm(true)} className="border border-red-300 text-red-600 hover:bg-red-50 font-medium py-2.5 px-6 rounded-lg transition"><i className="fas fa-trash-alt mr-2"></i>清空云端全部数据</button>
-                                            )}
+                                        <p className="text-lg sm:text-3xl font-bold text-gray-800 tracking-tight">{pendingShipments}</p>
+                                    </div>
+                                    <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+                                        <div className="flex items-center text-gray-500 mb-2 sm:mb-3">
+                                            <div className="rounded-full bg-red-50 p-2 sm:p-3 mr-2 sm:mr-3"><i className="fas fa-exclamation-triangle text-red-500 text-sm sm:text-lg"></i></div>
+                                            <p className="text-xs sm:text-sm font-medium">库存预警</p>
                                         </div>
+                                        <p className="text-lg sm:text-3xl font-bold text-red-500 tracking-tight">{lowStockCount}</p>
                                     </div>
                                 </div>
                             )}
 
-                            {/* Products */}
+                            {/* Products (Mobile Card View + Desktop Table View) */}
                             {activeTab === 'products' && (
-                                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                                    <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                        <h3 className="font-medium text-gray-700">商品库存列表</h3>
-                                        <button onClick={openAddProductModal} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm transition shadow-sm"><i className="fas fa-plus mr-2"></i>新建商品</button>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                                        <h3 className="font-bold text-gray-800">商品与库存 ({products.length})</h3>
+                                        <button onClick={openAddProductModal} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-sm active:scale-95 transition-transform"><i className="fas fa-plus mr-1"></i> 新建</button>
                                     </div>
-                                    <div className="overflow-x-auto">
+                                    
+                                    {/* 手机端卡片流 */}
+                                    <div className="grid grid-cols-1 gap-3 md:hidden pb-10">
+                                        {products.length === 0 && <div className="text-center py-10 text-gray-400 text-sm">暂无商品数据</div>}
+                                        {products.map(prod => (
+                                            <div key={prod.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div>
+                                                        <h4 className="font-bold text-gray-800 text-base">{prod.name}</h4>
+                                                        <p className="text-[10px] text-gray-400 font-mono mt-0.5">{prod.id}</p>
+                                                    </div>
+                                                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${prod.stock < 10 ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-50 text-green-600 border border-green-100'}`}>
+                                                        {prod.stock} 件 {prod.stock < 10 && '(补货)'}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center text-sm mb-4 bg-gray-50 p-2.5 rounded-xl">
+                                                    <div className="text-gray-500">进: <span className="text-gray-800 font-medium">¥{prod.cost}</span></div>
+                                                    <div className="text-gray-500">售: <span className="text-gray-800 font-medium">¥{prod.price}</span></div>
+                                                </div>
+                                                <div className="flex space-x-2 border-t border-gray-50 pt-3">
+                                                    <button onClick={() => {setRestockingProduct(prod); setRestockAmount('');}} className="flex-1 bg-indigo-50 text-indigo-600 py-2 rounded-xl text-sm font-medium active:bg-indigo-100 transition"><i className="fas fa-box-open mr-1"></i> 入库</button>
+                                                    <button onClick={() => openEditProductModal(prod)} className="flex-1 bg-gray-50 text-gray-600 py-2 rounded-xl text-sm font-medium active:bg-gray-200 transition"><i className="fas fa-edit mr-1"></i> 编辑</button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* 电脑端表格流 */}
+                                    <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                                         <table className="w-full text-left border-collapse">
                                             <thead>
-                                                <tr className="bg-white border-b text-gray-500 text-sm">
-                                                    <th className="p-4 font-medium">商品名称</th>
-                                                    <th className="p-4 font-medium">进货成本</th>
-                                                    <th className="p-4 font-medium">建议售价</th>
+                                                <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 text-xs uppercase tracking-wider">
+                                                    <th className="p-4 font-medium">商品信息</th>
+                                                    <th className="p-4 font-medium">成本/售价</th>
                                                     <th className="p-4 font-medium">当前库存</th>
-                                                    <th className="p-4 font-medium text-right">操作管理</th>
+                                                    <th className="p-4 font-medium text-right">操作</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="text-sm">
                                                 {products.map(prod => (
-                                                    <tr key={prod.id} className="border-b hover:bg-gray-50">
-                                                        <td className="p-4 font-medium text-gray-800">{prod.name}<div className="text-xs text-gray-400 font-normal mt-0.5">ID: {prod.id}</div></td>
-                                                        <td className="p-4 text-gray-600">¥{prod.cost}</td>
-                                                        <td className="p-4 text-gray-600">¥{prod.price}</td>
-                                                        <td className="p-4"><span className={`px-2 py-1 rounded-full text-xs font-bold ${prod.stock < 10 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{prod.stock} 件 {prod.stock < 10 && '(需补货)'}</span></td>
+                                                    <tr key={prod.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition">
+                                                        <td className="p-4 font-bold text-gray-800">{prod.name}<div className="text-xs text-gray-400 font-normal font-mono">{prod.id}</div></td>
+                                                        <td className="p-4"><div className="text-gray-500">进: <span className="text-gray-800">¥{prod.cost}</span></div><div className="text-gray-500 mt-1">售: <span className="text-gray-800">¥{prod.price}</span></div></td>
+                                                        <td className="p-4"><span className={`px-2.5 py-1 rounded-full text-xs font-bold ${prod.stock < 10 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>{prod.stock} 件</span></td>
                                                         <td className="p-4 text-right space-x-2">
-                                                            <button onClick={() => {setRestockingProduct(prod); setRestockAmount('');}} className="text-indigo-600 hover:text-indigo-800 text-xs border border-indigo-200 px-3 py-1.5 rounded-md hover:bg-indigo-50 transition" title="进货入库"><i className="fas fa-box-open"></i> 入库</button>
-                                                            <button onClick={() => openEditProductModal(prod)} className="text-gray-600 hover:text-gray-800 text-xs border border-gray-200 px-3 py-1.5 rounded-md hover:bg-gray-50 transition" title="编辑商品信息"><i className="fas fa-edit"></i> 编辑</button>
+                                                            <button onClick={() => {setRestockingProduct(prod); setRestockAmount('');}} className="text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg font-medium transition">入库</button>
+                                                            <button onClick={() => openEditProductModal(prod)} className="text-gray-600 hover:bg-gray-100 px-3 py-1.5 rounded-lg font-medium transition">编辑</button>
                                                         </td>
                                                     </tr>
                                                 ))}
-                                                {products.length === 0 && <tr><td colSpan="5" className="p-8 text-center text-gray-500">暂无商品数据</td></tr>}
+                                                {products.length === 0 && <tr><td colSpan="4" className="p-10 text-center text-gray-400">暂无数据</td></tr>}
                                             </tbody>
                                         </table>
                                     </div>
                                 </div>
                             )}
 
-                            {/* Orders */}
+                            {/* Orders (Mobile Card View + Desktop Table View) */}
                             {activeTab === 'orders' && (
-                                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                                    <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                        <h3 className="font-medium text-gray-700">全部订单</h3>
-                                        <button onClick={openAddOrderModal} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm transition shadow-sm"><i className="fas fa-plus mr-2"></i>新建发货订单</button>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                                        <h3 className="font-bold text-gray-800">全部订单 ({orders.length})</h3>
+                                        <button onClick={openAddOrderModal} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-sm active:scale-95 transition-transform"><i className="fas fa-plus mr-1"></i> 开单</button>
                                     </div>
-                                    <div className="overflow-x-auto">
+                                    
+                                    {/* 手机端卡片流 */}
+                                    <div className="grid grid-cols-1 gap-3 md:hidden pb-10">
+                                        {orders.length === 0 && <div className="text-center py-10 text-gray-400 text-sm">暂无订单数据</div>}
+                                        {orders.map(order => {
+                                            const cust = getCustomer(order.customerId);
+                                            const prod = getProduct(order.productId);
+                                            return (
+                                                <div key={order.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col relative overflow-hidden">
+                                                    {/* 顶部状态色带 */}
+                                                    <div className={`absolute top-0 left-0 w-full h-1 ${order.status === '已发货' ? 'bg-green-400' : 'bg-orange-400'}`}></div>
+                                                    
+                                                    <div className="flex justify-between items-start mb-3 mt-1">
+                                                        <div className="flex items-center space-x-2">
+                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${order.status === '已发货' ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-600'}`}>{order.status}</span>
+                                                            <span className="text-[10px] text-gray-400 font-mono">{order.id}</span>
+                                                        </div>
+                                                        <span className="text-xs text-gray-400">{order.date.slice(5)}</span>
+                                                    </div>
+                                                    
+                                                    <div className="mb-3">
+                                                        <h4 className="font-bold text-gray-800 text-base mb-1">{prod.name || '已删除商品'} <span className="text-gray-500 font-normal text-sm ml-1">x {order.quantity}</span></h4>
+                                                        <p className="text-lg font-bold text-indigo-600 tracking-tight">¥{(order.price * order.quantity).toLocaleString()}</p>
+                                                    </div>
+
+                                                    <div className="bg-gray-50 p-3 rounded-xl mb-4">
+                                                        <p className="text-sm font-medium text-gray-800 mb-1"><i className="fas fa-user text-gray-400 mr-1.5 w-3 text-center"></i>{cust.name || '已删除'} <span className="text-xs text-gray-500 font-normal">{cust.phone}</span></p>
+                                                        <p className="text-xs text-gray-500 truncate"><i className="fas fa-map-marker-alt text-gray-400 mr-1.5 w-3 text-center"></i>{cust.address}</p>
+                                                    </div>
+
+                                                    {/* 物流单号快速操作区 */}
+                                                    <div className="mb-4">
+                                                        {editingTrackingNo.id === order.id ? (
+                                                            <div className="flex items-center">
+                                                                <input type="text" autoFocus placeholder="输入单号" className="flex-1 bg-gray-50 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" value={editingTrackingNo.value} onChange={e => setEditingTrackingNo({ ...editingTrackingNo, value: e.target.value })} />
+                                                                <button onClick={() => saveTrackingNo(order.id)} className="ml-2 bg-indigo-600 text-white w-10 h-10 rounded-lg flex items-center justify-center shadow-sm active:scale-95"><i className="fas fa-check"></i></button>
+                                                            </div>
+                                                        ) : (
+                                                            order.trackingNo ? (
+                                                                <div onClick={() => setEditingTrackingNo({ id: order.id, value: order.trackingNo })} className="bg-indigo-50/50 border border-indigo-100 p-2.5 rounded-xl flex items-center justify-between active:bg-indigo-50 transition">
+                                                                    <div className="flex items-center text-sm font-mono text-indigo-700">
+                                                                        <i className="fas fa-truck text-indigo-400 mr-2"></i>{order.trackingNo}
+                                                                    </div>
+                                                                    <i className="fas fa-pen text-indigo-300 text-xs"></i>
+                                                                </div>
+                                                            ) : (
+                                                                <button onClick={() => setEditingTrackingNo({ id: order.id, value: '' })} className="w-full border border-dashed border-gray-300 text-gray-500 py-2.5 rounded-xl text-sm font-medium active:bg-gray-50 transition"><i className="fas fa-plus mr-1"></i> 填物流单号</button>
+                                                            )
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex space-x-2 border-t border-gray-50 pt-3">
+                                                        {order.status === '待发货' && <button onClick={() => updateOrderStatus(order.id, '已发货')} className="flex-1 bg-green-50 text-green-600 py-2 rounded-xl text-sm font-bold active:bg-green-100 transition shadow-sm"><i className="fas fa-box text-xs mr-1"></i> 一键发货</button>}
+                                                        <button onClick={() => openEditOrderModal(order)} className="flex-1 bg-gray-50 text-gray-600 py-2 rounded-xl text-sm font-medium active:bg-gray-200 transition"><i className="fas fa-edit mr-1 text-xs"></i> 修改订单</button>
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+
+                                    {/* 电脑端表格流 */}
+                                    <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                                         <table className="w-full text-left border-collapse">
                                             <thead>
-                                                <tr className="bg-white border-b text-gray-500 text-sm">
-                                                    <th className="p-4 font-medium">订单号/日期</th>
-                                                    <th className="p-4 font-medium">商品明细</th>
-                                                    <th className="p-4 font-medium">交易与利润</th>
-                                                    <th className="p-4 font-medium">收件人信息</th>
-                                                    <th className="p-4 font-medium">状态与物流单号</th>
-                                                    <th className="p-4 font-medium text-right">操作管理</th>
+                                                <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 text-xs uppercase tracking-wider">
+                                                    <th className="p-4 font-medium">订单信息</th>
+                                                    <th className="p-4 font-medium">金额与利润</th>
+                                                    <th className="p-4 font-medium">收件人</th>
+                                                    <th className="p-4 font-medium">状态/物流</th>
+                                                    <th className="p-4 font-medium text-right">操作</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="text-sm">
@@ -584,31 +532,38 @@
                                                     const cost = order.cost || prod.cost || 0; 
                                                     const profit = (order.price - cost) * order.quantity;
                                                     return (
-                                                        <tr key={order.id} className="border-b hover:bg-gray-50 group">
-                                                            <td className="p-4"><div className="font-medium text-gray-800">{order.id}</div><div className="text-gray-500 text-xs mt-0.5">{order.date}</div></td>
-                                                            <td className="p-4"><div className="font-medium text-gray-800">{prod.name ? prod.name : <span className="text-red-500 italic">已删除商品</span>}</div><div className="text-gray-500 text-xs mt-1">单价: ¥{order.price} x {order.quantity}</div></td>
-                                                            <td className="p-4"><div className="font-bold text-gray-800">总计: ¥{(order.price * order.quantity).toLocaleString()}</div><div className="text-green-600 text-xs mt-1 font-medium">毛利: +¥{profit.toLocaleString()}</div></td>
-                                                            <td className="p-4"><div className="font-medium">{cust.name ? `${cust.name} (${cust.phone})` : <span className="text-red-500 italic">已删除收件人</span>}</div><div className="text-gray-500 text-xs truncate max-w-[200px] mt-0.5" title={cust.address}>{cust.address || ''}</div></td>
+                                                        <tr key={order.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition">
                                                             <td className="p-4">
-                                                                <span className={`px-2 py-1 rounded-full text-xs font-medium inline-block mb-2 ${order.status === '已发货' ? 'bg-green-100 text-green-700' : order.status === '待发货' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-700'}`}>{order.status}</span>
+                                                                <div className="font-bold text-gray-800">{prod.name || '已删除商品'} <span className="font-normal text-gray-500 ml-1">x{order.quantity}</span></div>
+                                                                <div className="text-xs text-gray-400 font-mono mt-1">{order.id} · {order.date}</div>
+                                                            </td>
+                                                            <td className="p-4">
+                                                                <div className="font-bold text-gray-800">¥{(order.price * order.quantity).toLocaleString()}</div>
+                                                                <div className="text-xs text-green-600 font-medium mt-1">利: ¥{profit.toLocaleString()}</div>
+                                                            </td>
+                                                            <td className="p-4">
+                                                                <div className="font-medium text-gray-800">{cust.name || '已删除'} <span className="font-normal text-gray-500 text-xs ml-1">{cust.phone}</span></div>
+                                                                <div className="text-xs text-gray-400 truncate max-w-[180px] mt-1" title={cust.address}>{cust.address || ''}</div>
+                                                            </td>
+                                                            <td className="p-4">
+                                                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold inline-block mb-2 ${order.status === '已发货' ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-600'}`}>{order.status}</span>
                                                                 {editingTrackingNo.id === order.id ? (
                                                                     <div className="flex items-center">
-                                                                        <input type="text" autoFocus placeholder="输入单号..." className="border border-indigo-300 rounded px-2 py-1 text-xs w-32 outline-none focus:ring-1 focus:ring-indigo-500 bg-white" value={editingTrackingNo.value} onChange={e => setEditingTrackingNo({ ...editingTrackingNo, value: e.target.value })} onKeyDown={e => e.key === 'Enter' && saveTrackingNo(order.id)} />
-                                                                        <button onClick={() => saveTrackingNo(order.id)} className="ml-1 text-green-600 hover:bg-green-50 p-1 rounded transition"><i className="fas fa-check"></i></button>
-                                                                        <button onClick={() => setEditingTrackingNo({ id: null, value: '' })} className="text-gray-400 hover:bg-gray-50 p-1 rounded transition"><i className="fas fa-times"></i></button>
+                                                                        <input type="text" autoFocus placeholder="单号" className="border border-indigo-200 rounded px-2 py-1 text-xs w-28 outline-none focus:ring-2 focus:ring-indigo-500" value={editingTrackingNo.value} onChange={e => setEditingTrackingNo({ ...editingTrackingNo, value: e.target.value })} onKeyDown={e => e.key === 'Enter' && saveTrackingNo(order.id)} />
+                                                                        <button onClick={() => saveTrackingNo(order.id)} className="ml-1 text-green-600 p-1 hover:bg-green-50 rounded"><i className="fas fa-check"></i></button>
                                                                     </div>
                                                                 ) : (
-                                                                    <div>{order.trackingNo ? (<div className="text-xs text-gray-600 flex items-center group-hover:bg-gray-100 p-1 -ml-1 rounded transition w-max"><i className="fas fa-truck text-indigo-400 mr-1.5"></i><span className="font-mono">{order.trackingNo}</span><button onClick={() => setEditingTrackingNo({ id: order.id, value: order.trackingNo })} className="ml-2 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-indigo-600 transition" title="修改单号"><i className="fas fa-pen"></i></button></div>) : (<button onClick={() => setEditingTrackingNo({ id: order.id, value: '' })} className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded transition"><i className="fas fa-plus mr-1"></i> 填写单号</button>)}</div>
+                                                                    <div>{order.trackingNo ? (<div className="text-xs font-mono text-gray-600 group flex items-center w-max"><i className="fas fa-truck text-indigo-400 mr-1.5"></i>{order.trackingNo} <button onClick={() => setEditingTrackingNo({ id: order.id, value: order.trackingNo })} className="ml-2 text-gray-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition"><i className="fas fa-pen"></i></button></div>) : (<button onClick={() => setEditingTrackingNo({ id: order.id, value: '' })} className="text-[10px] text-indigo-500 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded transition">填单号</button>)}</div>
                                                                 )}
                                                             </td>
                                                             <td className="p-4 text-right space-x-2">
-                                                                {order.status === '待发货' && <button onClick={() => updateOrderStatus(order.id, '已发货')} className="text-indigo-600 hover:text-indigo-800 text-xs border border-indigo-200 px-3 py-1.5 rounded-md hover:bg-indigo-50 transition whitespace-nowrap"><i className="fas fa-box"></i> 发货</button>}
-                                                                <button onClick={() => openEditOrderModal(order)} className="text-gray-600 hover:text-gray-800 text-xs border border-gray-200 px-3 py-1.5 rounded-md hover:bg-gray-50 transition whitespace-nowrap" title="编辑订单详情"><i className="fas fa-edit"></i> 编辑</button>
+                                                                {order.status === '待发货' && <button onClick={() => updateOrderStatus(order.id, '已发货')} className="text-green-600 hover:bg-green-50 px-3 py-1.5 rounded-lg font-medium transition">发货</button>}
+                                                                <button onClick={() => openEditOrderModal(order)} className="text-gray-600 hover:bg-gray-100 px-3 py-1.5 rounded-lg font-medium transition">编辑</button>
                                                             </td>
                                                         </tr>
                                                     )
                                                 })}
-                                                {orders.length === 0 && <tr><td colSpan="6" className="p-8 text-center text-gray-500">暂无订单数据</td></tr>}
+                                                {orders.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-gray-400">暂无订单数据</td></tr>}
                                             </tbody>
                                         </table>
                                     </div>
@@ -617,67 +572,87 @@
 
                             {/* Customers */}
                             {activeTab === 'customers' && (
-                                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                                    <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                        <h3 className="font-medium text-gray-700">地址与收件人簿</h3>
-                                        <button onClick={openAddCustomerModal} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm transition shadow-sm"><i className="fas fa-plus mr-2"></i>添加收件人</button>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                                        <h3 className="font-bold text-gray-800">客户地址簿 ({customers.length})</h3>
+                                        <button onClick={openAddCustomerModal} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-sm active:scale-95 transition-transform"><i className="fas fa-plus mr-1"></i> 新增</button>
                                     </div>
-                                    <div className="overflow-x-auto">
+
+                                    {/* 手机端卡片流 */}
+                                    <div className="grid grid-cols-1 gap-3 md:hidden pb-10">
+                                        {customers.length === 0 && <div className="text-center py-10 text-gray-400 text-sm">暂无客户数据</div>}
+                                        {customers.map(cust => {
+                                            const orderCount = orders.filter(o => o.customerId === cust.id).length;
+                                            return (
+                                                <div key={cust.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <h4 className="font-bold text-gray-800 text-lg flex items-center">{cust.name} <span className="ml-2 text-xs font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{orderCount} 单</span></h4>
+                                                        <button onClick={() => openEditCustomerModal(cust)} className="text-gray-400 hover:text-indigo-600 p-2"><i className="fas fa-edit"></i></button>
+                                                    </div>
+                                                    <p className="text-sm text-indigo-600 font-medium mb-2 font-mono"><i className="fas fa-phone-alt text-gray-300 mr-2 w-4 text-center"></i>{cust.phone}</p>
+                                                    <p className="text-sm text-gray-600 leading-relaxed"><i className="fas fa-map-marker-alt text-gray-300 mr-2 w-4 text-center"></i>{cust.address}</p>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+
+                                    {/* 电脑端表格流 */}
+                                    <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                                         <table className="w-full text-left border-collapse">
                                             <thead>
-                                                <tr className="bg-white border-b text-gray-500 text-sm">
-                                                    <th className="p-4 font-medium w-32">姓名</th>
-                                                    <th className="p-4 font-medium w-40">联系电话</th>
+                                                <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 text-xs uppercase tracking-wider">
+                                                    <th className="p-4 font-medium w-48">姓名/电话</th>
                                                     <th className="p-4 font-medium">收件地址</th>
-                                                    <th className="p-4 font-medium w-32">关联订单数</th>
-                                                    <th className="p-4 font-medium text-right">操作管理</th>
+                                                    <th className="p-4 font-medium w-32">历史单量</th>
+                                                    <th className="p-4 font-medium text-right">操作</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="text-sm">
                                                 {customers.map(cust => {
                                                     const orderCount = orders.filter(o => o.customerId === cust.id).length;
                                                     return (
-                                                        <tr key={cust.id} className="border-b hover:bg-gray-50">
-                                                            <td className="p-4 font-medium text-gray-800">{cust.name}<div className="text-xs text-gray-400 font-normal mt-0.5">ID: {cust.id}</div></td>
-                                                            <td className="p-4 text-gray-600">{cust.phone}</td>
+                                                        <tr key={cust.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition">
+                                                            <td className="p-4"><div className="font-bold text-gray-800">{cust.name}</div><div className="text-gray-500 mt-1 font-mono text-xs">{cust.phone}</div></td>
                                                             <td className="p-4 text-gray-600">{cust.address}</td>
-                                                            <td className="p-4"><span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-medium">{orderCount} 单</span></td>
+                                                            <td className="p-4"><span className="bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full text-xs font-bold">{orderCount} 单</span></td>
                                                             <td className="p-4 text-right">
-                                                                <button onClick={() => openEditCustomerModal(cust)} className="text-gray-600 hover:text-gray-800 text-xs border border-gray-200 px-3 py-1.5 rounded-md hover:bg-gray-50 transition" title="编辑收件人信息"><i className="fas fa-edit mr-1"></i> 编辑</button>
+                                                                <button onClick={() => openEditCustomerModal(cust)} className="text-gray-600 hover:bg-gray-100 px-3 py-1.5 rounded-lg font-medium transition">编辑</button>
                                                             </td>
                                                         </tr>
                                                     )
                                                 })}
-                                                {customers.length === 0 && <tr><td colSpan="5" className="p-8 text-center text-gray-500">暂无收件人数据</td></tr>}
+                                                {customers.length === 0 && <tr><td colSpan="4" className="p-10 text-center text-gray-400">暂无数据</td></tr>}
                                             </tbody>
                                         </table>
                                     </div>
                                 </div>
                             )}
+
                         </main>
                     </div>
 
-                    {/* Modals (Customer, Product, Restock, Order) */}
+                    {/* ================= 移动端底部安全浮动弹窗重构 ================= */}
                     
                     {/* Customer Modal */}
                     {showCustomerModal && (
-                        <div className="fixed inset-0 modal flex items-center justify-center z-[100] p-4">
-                            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-                                <div className="flex justify-between items-center mb-5">
-                                    <h3 className="text-lg font-bold text-gray-800">{editingCustomer ? '编辑收件人信息' : '添加收件人'}</h3>
-                                    <button type="button" onClick={() => setShowCustomerModal(false)} className="text-gray-400 hover:text-gray-600"><i className="fas fa-times"></i></button>
+                        <div className="fixed inset-0 modal flex items-end md:items-center justify-center z-[100] sm:p-4">
+                            <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl p-6 pb-safe animate-[slideUp_0.3s_ease-out]">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-lg font-bold text-gray-800">{editingCustomer ? '编辑收件人' : '添加新收件人'}</h3>
+                                    <button type="button" onClick={() => setShowCustomerModal(false)} className="bg-gray-100 w-8 h-8 rounded-full flex items-center justify-center text-gray-500 active:scale-90 transition"><i className="fas fa-times"></i></button>
                                 </div>
                                 <form onSubmit={handleSaveCustomer} className="space-y-4">
-                                    <div><label className="block text-sm font-medium text-gray-700 mb-1">姓名</label><input required type="text" className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="如: 王小明" value={customerForm.name} onChange={(e) => setCustomerForm({...customerForm, name: e.target.value})} /></div>
-                                    <div><label className="block text-sm font-medium text-gray-700 mb-1">联系电话</label><input required type="tel" className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="手机或固定电话" value={customerForm.phone} onChange={(e) => setCustomerForm({...customerForm, phone: e.target.value})} /></div>
-                                    <div><label className="block text-sm font-medium text-gray-700 mb-1">收件详细地址</label><textarea required rows="3" className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="省市区及详细街道门牌号" value={customerForm.address} onChange={(e) => setCustomerForm({...customerForm, address: e.target.value})}></textarea></div>
-                                    <div className={`pt-4 flex ${editingCustomer ? 'justify-between' : 'justify-end'} items-center mt-2`}>
+                                    <div><label className="block text-sm font-bold text-gray-700 mb-1.5 ml-1">姓名</label><input required type="text" className="w-full bg-gray-50 border-0 rounded-xl p-3.5 text-base focus:ring-2 focus:ring-indigo-500 outline-none transition" placeholder="如: 王小明" value={customerForm.name} onChange={(e) => setCustomerForm({...customerForm, name: e.target.value})} /></div>
+                                    <div><label className="block text-sm font-bold text-gray-700 mb-1.5 ml-1">联系电话</label><input required type="tel" className="w-full bg-gray-50 border-0 rounded-xl p-3.5 text-base focus:ring-2 focus:ring-indigo-500 outline-none transition" placeholder="手机或固定电话" value={customerForm.phone} onChange={(e) => setCustomerForm({...customerForm, phone: e.target.value})} /></div>
+                                    <div><label className="block text-sm font-bold text-gray-700 mb-1.5 ml-1">详细地址</label><textarea required rows="3" className="w-full bg-gray-50 border-0 rounded-xl p-3.5 text-base focus:ring-2 focus:ring-indigo-500 outline-none transition" placeholder="省市区及详细街道门牌号" value={customerForm.address} onChange={(e) => setCustomerForm({...customerForm, address: e.target.value})}></textarea></div>
+                                    
+                                    <div className="pt-4 flex flex-col space-y-3 mt-4">
+                                        <button type="submit" className="w-full bg-indigo-600 text-white rounded-xl py-3.5 text-base font-bold shadow-sm active:bg-indigo-700 transition">{editingCustomer ? '保存修改' : '确认添加'}</button>
                                         {editingCustomer && (
                                             confirmDeleteCustomer ? (
-                                                <div className="flex items-center bg-red-50 p-1.5 rounded-lg border border-red-100 mr-2"><span className="text-xs text-red-600 font-medium mx-2"><i className="fas fa-exclamation-circle mr-1"></i>确认删除？</span><button type="button" onClick={executeDeleteCustomer} className="bg-red-500 text-white px-3 py-1.5 rounded text-xs hover:bg-red-600 shadow-sm transition">确认</button><button type="button" onClick={() => setConfirmDeleteCustomer(false)} className="text-gray-500 px-3 py-1.5 text-xs hover:bg-gray-200 rounded ml-1 transition">取消</button></div>
-                                            ) : (<button type="button" onClick={() => setConfirmDeleteCustomer(true)} className="text-red-500 hover:text-white hover:bg-red-500 border border-red-200 px-3 py-2 rounded-lg text-sm flex items-center transition shrink-0"><i className="fas fa-trash-alt mr-1"></i> 删除联系人</button>)
+                                                <div className="w-full flex space-x-2"><button type="button" onClick={executeDeleteCustomer} className="flex-1 bg-red-500 text-white rounded-xl py-3.5 font-bold active:bg-red-600">确认删除</button><button type="button" onClick={() => setConfirmDeleteCustomer(false)} className="flex-1 bg-gray-100 text-gray-700 rounded-xl py-3.5 font-bold">取消</button></div>
+                                            ) : (<button type="button" onClick={() => setConfirmDeleteCustomer(true)} className="w-full text-red-500 bg-red-50 rounded-xl py-3.5 font-bold active:bg-red-100 transition">删除联系人</button>)
                                         )}
-                                        <div className="flex space-x-3 shrink-0"><button type="button" onClick={() => setShowCustomerModal(false)} className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 font-medium transition">取消</button><button type="submit" className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 font-medium transition">{editingCustomer ? '保存修改' : '保存收件人'}</button></div>
                                     </div>
                                 </form>
                             </div>
@@ -686,41 +661,46 @@
 
                     {/* Product Modal */}
                     {showProductModal && (
-                        <div className="fixed inset-0 modal flex items-center justify-center z-[100] p-4">
-                            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-                                <div className="flex justify-between items-center mb-5">
-                                    <h3 className="text-lg font-bold text-gray-800">{editingProduct ? '编辑商品信息' : '新建商品入库'}</h3>
-                                    <button type="button" onClick={() => setShowProductModal(false)} className="text-gray-400 hover:text-gray-600"><i className="fas fa-times"></i></button>
+                        <div className="fixed inset-0 modal flex items-end md:items-center justify-center z-[100] sm:p-4">
+                            <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl p-6 pb-safe animate-[slideUp_0.3s_ease-out]">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-lg font-bold text-gray-800">{editingProduct ? '编辑商品' : '新建商品入库'}</h3>
+                                    <button type="button" onClick={() => setShowProductModal(false)} className="bg-gray-100 w-8 h-8 rounded-full flex items-center justify-center text-gray-500 active:scale-90 transition"><i className="fas fa-times"></i></button>
                                 </div>
                                 <form onSubmit={handleSaveProduct} className="space-y-4">
-                                    <div><label className="block text-sm font-medium text-gray-700 mb-1">商品名称</label><input required type="text" className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="如: MacBook Pro M3" value={productForm.name} onChange={(e) => setProductForm({...productForm, name: e.target.value})} /></div>
-                                    <div className="flex space-x-4">
-                                        <div className="flex-1"><label className="block text-sm font-medium text-gray-700 mb-1">进货成本 (¥)</label><input required type="number" min="0" step="0.01" className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="每件成本" value={productForm.cost} onChange={(e) => setProductForm({...productForm, cost: e.target.value})} /></div>
-                                        <div className="flex-1"><label className="block text-sm font-medium text-gray-700 mb-1">建议售价 (¥)</label><input required type="number" min="0" step="0.01" className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="对外标价" value={productForm.price} onChange={(e) => setProductForm({...productForm, price: e.target.value})} /></div>
+                                    <div><label className="block text-sm font-bold text-gray-700 mb-1.5 ml-1">商品名称</label><input required type="text" className="w-full bg-gray-50 border-0 rounded-xl p-3.5 text-base focus:ring-2 focus:ring-indigo-500 outline-none transition" placeholder="如: MacBook Pro M3" value={productForm.name} onChange={(e) => setProductForm({...productForm, name: e.target.value})} /></div>
+                                    <div className="flex space-x-3">
+                                        <div className="flex-1"><label className="block text-sm font-bold text-gray-700 mb-1.5 ml-1">进货成本</label><input required type="number" min="0" step="0.01" className="w-full bg-gray-50 border-0 rounded-xl p-3.5 text-base focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="¥" value={productForm.cost} onChange={(e) => setProductForm({...productForm, cost: e.target.value})} /></div>
+                                        <div className="flex-1"><label className="block text-sm font-bold text-gray-700 mb-1.5 ml-1">建议售价</label><input required type="number" min="0" step="0.01" className="w-full bg-gray-50 border-0 rounded-xl p-3.5 text-base focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="¥" value={productForm.price} onChange={(e) => setProductForm({...productForm, price: e.target.value})} /></div>
                                     </div>
-                                    <div><label className="block text-sm font-medium text-gray-700 mb-1">{editingProduct ? '当前库存修改' : '初始库存数量'}</label><input required type="number" min="0" className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="现有库存件数" value={productForm.stock} onChange={(e) => setProductForm({...productForm, stock: e.target.value})} /></div>
-                                    <div className={`pt-4 flex ${editingProduct ? 'justify-between' : 'justify-end'} items-center mt-2`}>
+                                    <div><label className="block text-sm font-bold text-gray-700 mb-1.5 ml-1">{editingProduct ? '强制修正库存' : '初始库存件数'}</label><input required type="number" min="0" className="w-full bg-gray-50 border-0 rounded-xl p-3.5 text-base focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="数量" value={productForm.stock} onChange={(e) => setProductForm({...productForm, stock: e.target.value})} /></div>
+                                    
+                                    <div className="pt-4 flex flex-col space-y-3 mt-4">
+                                        <button type="submit" className="w-full bg-indigo-600 text-white rounded-xl py-3.5 text-base font-bold shadow-sm active:bg-indigo-700 transition">{editingProduct ? '保存修改' : '确认建档'}</button>
                                         {editingProduct && (
                                             confirmDeleteProduct ? (
-                                                <div className="flex items-center bg-red-50 p-1.5 rounded-lg border border-red-100 mr-2"><span className="text-xs text-red-600 font-medium mx-2"><i className="fas fa-exclamation-circle mr-1"></i>确认删除商品？</span><button type="button" onClick={executeDeleteProduct} className="bg-red-500 text-white px-3 py-1.5 rounded text-xs hover:bg-red-600 shadow-sm transition">确认</button><button type="button" onClick={() => setConfirmDeleteProduct(false)} className="text-gray-500 px-3 py-1.5 text-xs hover:bg-gray-200 rounded ml-1 transition">取消</button></div>
-                                            ) : (<button type="button" onClick={() => setConfirmDeleteProduct(true)} className="text-red-500 hover:text-white hover:bg-red-500 border border-red-200 px-3 py-2 rounded-lg text-sm flex items-center transition shrink-0"><i className="fas fa-trash-alt mr-1"></i> 删除商品</button>)
+                                                <div className="w-full flex space-x-2"><button type="button" onClick={executeDeleteProduct} className="flex-1 bg-red-500 text-white rounded-xl py-3.5 font-bold active:bg-red-600">确认删除</button><button type="button" onClick={() => setConfirmDeleteProduct(false)} className="flex-1 bg-gray-100 text-gray-700 rounded-xl py-3.5 font-bold">取消</button></div>
+                                            ) : (<button type="button" onClick={() => setConfirmDeleteProduct(true)} className="w-full text-red-500 bg-red-50 rounded-xl py-3.5 font-bold active:bg-red-100 transition">删除商品</button>)
                                         )}
-                                        <div className="flex space-x-3 shrink-0"><button type="button" onClick={() => setShowProductModal(false)} className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 font-medium transition">取消</button><button type="submit" className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 font-medium transition">{editingProduct ? '保存修改' : '保存入库'}</button></div>
                                     </div>
                                 </form>
                             </div>
                         </div>
                     )}
 
-                    {/* Restock Modal */}
+                    {/* Restock Modal (小弹窗) */}
                     {restockingProduct && (
-                        <div className="fixed inset-0 modal flex items-center justify-center z-[110] p-4">
-                            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
-                                <h3 className="text-lg font-bold text-gray-800 mb-2">商品入库</h3>
-                                <p className="text-sm text-gray-600 mb-5">正在为 <span className="font-bold text-indigo-600">{restockingProduct.name}</span> 添加入库：</p>
+                        <div className="fixed inset-0 modal flex items-center justify-center z-[110] p-6">
+                            <div className="bg-white w-full max-w-xs rounded-3xl shadow-2xl p-6 animate-[popIn_0.2s_ease-out]">
+                                <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-xl mb-4"><i className="fas fa-box-open"></i></div>
+                                <h3 className="text-xl font-bold text-gray-800 mb-1">补充库存</h3>
+                                <p className="text-sm text-gray-500 mb-5">商品：<span className="font-bold text-gray-800">{restockingProduct.name}</span></p>
                                 <form onSubmit={executeRestock}>
-                                    <input type="number" min="1" autoFocus required className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none mb-5" placeholder="请输入本次入库的件数" value={restockAmount} onChange={e => setRestockAmount(e.target.value)} />
-                                    <div className="flex justify-end space-x-3"><button type="button" onClick={() => setRestockingProduct(null)} className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition">取消</button><button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition">确认入库</button></div>
+                                    <input type="number" min="1" autoFocus required className="w-full bg-gray-50 border-0 rounded-xl p-4 text-center text-xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none mb-6" placeholder="输入入库数量" value={restockAmount} onChange={e => setRestockAmount(e.target.value)} />
+                                    <div className="flex space-x-3">
+                                        <button type="button" onClick={() => setRestockingProduct(null)} className="flex-1 bg-gray-100 text-gray-700 rounded-xl py-3 font-bold active:bg-gray-200">取消</button>
+                                        <button type="submit" className="flex-[2] bg-indigo-600 text-white rounded-xl py-3 font-bold active:bg-indigo-700 shadow-sm">确认入库</button>
+                                    </div>
                                 </form>
                             </div>
                         </div>
@@ -728,51 +708,69 @@
 
                     {/* Order Modal */}
                     {showOrderModal && (
-                        <div className="fixed inset-0 modal flex items-center justify-center z-[100] p-4">
-                            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6">
-                                <div className="flex justify-between items-center mb-5">
-                                    <h3 className="text-lg font-bold text-gray-800">{editingOrder ? `编辑订单 (${editingOrder.id})` : '新建订单与发货'}</h3>
-                                    <button type="button" onClick={() => setShowOrderModal(false)} className="text-gray-400 hover:text-gray-600"><i className="fas fa-times"></i></button>
+                        <div className="fixed inset-0 modal flex items-end md:items-center justify-center z-[100] sm:p-4">
+                            <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl p-6 pb-safe max-h-[90vh] overflow-y-auto no-scrollbar animate-[slideUp_0.3s_ease-out]">
+                                <div className="flex justify-between items-center mb-6 sticky top-0 bg-white py-2 z-10">
+                                    <h3 className="text-lg font-bold text-gray-800">{editingOrder ? '编辑订单' : '创建发货单'}</h3>
+                                    <button type="button" onClick={() => setShowOrderModal(false)} className="bg-gray-100 w-8 h-8 rounded-full flex items-center justify-center text-gray-500 active:scale-90 transition"><i className="fas fa-times"></i></button>
                                 </div>
                                 <form onSubmit={handleSaveOrder} className="space-y-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">选择商品</label>
-                                        <select required className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" value={orderForm.productId} onChange={(e) => { const prod = products.find(p => p.id === e.target.value); setOrderForm({ ...orderForm, productId: e.target.value, price: prod ? prod.price : orderForm.price }); }}>
-                                            <option value="">-- 请选择出库商品 --</option>
-                                            {products.map(p => (<option key={p.id} value={p.id} disabled={p.stock === 0 && (!editingOrder || editingOrder.productId !== p.id)}>{p.name} (当前库存: {p.stock}) {p.stock === 0 ? '- 已售罄' : ''}</option>))}
+                                        <label className="block text-sm font-bold text-gray-700 mb-1.5 ml-1">发货商品</label>
+                                        <select required className="w-full bg-gray-50 border-0 rounded-xl p-3.5 text-base focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-gray-800" value={orderForm.productId} onChange={(e) => { const prod = products.find(p => p.id === e.target.value); setOrderForm({ ...orderForm, productId: e.target.value, price: prod ? prod.price : orderForm.price }); }}>
+                                            <option value="">-- 点击选择商品 --</option>
+                                            {products.map(p => (<option key={p.id} value={p.id} disabled={p.stock === 0 && (!editingOrder || editingOrder.productId !== p.id)}>{p.name} (剩: {p.stock}) {p.stock === 0 ? '⛔️缺货' : ''}</option>))}
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">选择收件人</label>
-                                        <select required className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" value={orderForm.customerId} onChange={(e) => setOrderForm({...orderForm, customerId: e.target.value})}>
-                                            <option value="">-- 请选择收件人 --</option>
-                                            {customers.map(c => <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>)}
+                                        <label className="block text-sm font-bold text-gray-700 mb-1.5 ml-1">收件客户</label>
+                                        <select required className="w-full bg-gray-50 border-0 rounded-xl p-3.5 text-base focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-gray-800" value={orderForm.customerId} onChange={(e) => setOrderForm({...orderForm, customerId: e.target.value})}>
+                                            <option value="">-- 点击选择客户 --</option>
+                                            {customers.map(c => <option key={c.id} value={c.id}>{c.name} - {c.phone}</option>)}
                                         </select>
                                     </div>
-                                    <div className="flex space-x-4">
-                                        <div className="flex-1"><label className="block text-sm font-medium text-gray-700 mb-1">实际成交单价 (¥)</label><input required type="number" min="0" step="0.01" className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" value={orderForm.price} onChange={(e) => setOrderForm({...orderForm, price: e.target.value})} /></div>
-                                        <div className="flex-1"><label className="block text-sm font-medium text-gray-700 mb-1">发货数量</label><input required type="number" min="1" className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" value={orderForm.quantity} onChange={(e) => setOrderForm({...orderForm, quantity: e.target.value})} /></div>
+                                    <div className="flex space-x-3">
+                                        <div className="flex-[3]"><label className="block text-sm font-bold text-gray-700 mb-1.5 ml-1">实收单价 (¥)</label><input required type="number" min="0" step="0.01" className="w-full bg-gray-50 border-0 rounded-xl p-3.5 text-base font-bold text-indigo-600 focus:ring-2 focus:ring-indigo-500 outline-none" value={orderForm.price} onChange={(e) => setOrderForm({...orderForm, price: e.target.value})} /></div>
+                                        <div className="flex-[2]"><label className="block text-sm font-bold text-gray-700 mb-1.5 ml-1">数量</label><input required type="number" min="1" className="w-full bg-gray-50 border-0 rounded-xl p-3.5 text-base font-bold focus:ring-2 focus:ring-indigo-500 outline-none text-center" value={orderForm.quantity} onChange={(e) => setOrderForm({...orderForm, quantity: e.target.value})} /></div>
                                     </div>
                                     
                                     {editingOrder && (
-                                        <div className="flex space-x-4">
-                                            <div className="flex-1"><label className="block text-sm font-medium text-gray-700 mb-1">订单状态</label><select className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" value={orderForm.status} onChange={(e) => setOrderForm({...orderForm, status: e.target.value})}><option value="待发货">待发货</option><option value="已发货">已发货</option><option value="已退款">已退款</option></select></div>
-                                            <div className="flex-1"><label className="block text-sm font-medium text-gray-700 mb-1">快递单号 (选填)</label><input type="text" className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="物流单号" value={orderForm.trackingNo} onChange={(e) => setOrderForm({...orderForm, trackingNo: e.target.value})} /></div>
+                                        <div className="bg-indigo-50/50 p-4 rounded-xl space-y-4 border border-indigo-50 mt-2">
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-1.5 ml-1">当前状态</label>
+                                                <select className="w-full bg-white border border-gray-200 rounded-xl p-3 text-base focus:ring-2 focus:ring-indigo-500 outline-none font-medium" value={orderForm.status} onChange={(e) => setOrderForm({...orderForm, status: e.target.value})}>
+                                                    <option value="待发货">⏳ 待发货</option>
+                                                    <option value="已发货">✅ 已发货</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-1.5 ml-1">运单号 (选填)</label>
+                                                <input type="text" className="w-full bg-white border border-gray-200 rounded-xl p-3 text-base focus:ring-2 focus:ring-indigo-500 outline-none font-mono" placeholder="录入单号即自动发货" value={orderForm.trackingNo} onChange={(e) => setOrderForm({...orderForm, trackingNo: e.target.value})} />
+                                            </div>
                                         </div>
                                     )}
 
-                                    <div className={`pt-4 flex ${editingOrder ? 'justify-between' : 'justify-end'} items-center mt-2`}>
+                                    <div className="pt-6 flex flex-col space-y-3">
+                                        <button type="submit" className="w-full bg-indigo-600 text-white rounded-xl py-3.5 text-base font-bold shadow-md active:bg-indigo-700 transition">
+                                            {editingOrder ? '保存订单修改' : '生成订单并扣除库存'}
+                                        </button>
+                                        
                                         {editingOrder && (
                                             confirmDelete ? (
-                                                <div className="flex items-center bg-red-50 p-1.5 rounded-lg border border-red-100 mr-2"><span className="text-xs text-red-600 font-medium mx-2"><i className="fas fa-exclamation-circle mr-1"></i>确认删除并退库存？</span><button type="button" onClick={executeDeleteOrder} className="bg-red-500 text-white px-3 py-1.5 rounded text-xs hover:bg-red-600 shadow-sm transition">确认</button><button type="button" onClick={() => setConfirmDelete(false)} className="text-gray-500 px-3 py-1.5 text-xs hover:bg-gray-200 rounded ml-1 transition">取消</button></div>
-                                            ) : (<button type="button" onClick={() => setConfirmDelete(true)} className="text-red-500 hover:text-white hover:bg-red-500 border border-red-200 px-3 py-2 rounded-lg text-sm flex items-center transition shrink-0"><i className="fas fa-trash-alt mr-1"></i> 彻底删除</button>)
+                                                <div className="w-full flex space-x-2"><button type="button" onClick={executeDeleteOrder} className="flex-1 bg-red-500 text-white rounded-xl py-3.5 font-bold active:bg-red-600">确认删除并退库存</button><button type="button" onClick={() => setConfirmDelete(false)} className="flex-1 bg-gray-100 text-gray-700 rounded-xl py-3.5 font-bold">取消</button></div>
+                                            ) : (<button type="button" onClick={() => setConfirmDelete(true)} className="w-full text-red-500 bg-transparent border-2 border-red-100 rounded-xl py-3 font-bold active:bg-red-50 transition">废弃此订单</button>)
                                         )}
-                                        <div className="flex space-x-3 shrink-0"><button type="button" onClick={() => setShowOrderModal(false)} className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 font-medium transition">取消</button><button type="submit" className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 font-medium transition">{editingOrder ? '保存修改' : '生成订单并扣库存'}</button></div>
                                     </div>
                                 </form>
                             </div>
                         </div>
                     )}
+                    
+                    {/* CSS 动画定义 */}
+                    <style dangerouslySetInnerHTML={{__html: `
+                        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+                        @keyframes popIn { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+                    `}} />
                 </div>
             );
         };
